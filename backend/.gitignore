@@ -1,0 +1,71 @@
+# ===== Python =====
+# 虚拟环境（每个人自己创建，不上传）
+venv/
+.venv/
+env/
+
+# Python 编译缓存
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.egg-info/
+dist/
+build/
+
+# ===== 敏感文件 =====
+# .env 含 API Key，绝对不能上传！
+.env
+.env.local
+.env.*.local
+
+# 但 .env.example 要上传（配置模板，不含真实 Key）
+!.env.example
+
+# ===== 数据库与向量库 =====
+# SQLite 数据库（可重新生成）
+backend/db/
+*.db
+*.sqlite
+*.sqlite3
+
+# ChromaDB 向量库（可重新生成）
+backend/db/chroma_db/
+
+# ===== 前端 =====
+node_modules/
+frontend/dist/
+frontend/.vite/
+
+# ===== IDE 与编辑器 =====
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# ===== 操作系统 =====
+# Windows
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+# macOS
+.DS_Store
+# Linux
+*~
+
+# ===== 日志与临时文件 =====
+*.log
+logs/
+tmp/
+*.tmp
+
+# ===== 测试与覆盖率 =====
+.pytest_cache/
+htmlcov/
+.coverage
+.coverage.*
+coverage.xml
+
+# ===== Jupyter Notebook =====
+.ipynb_checkpoints/
