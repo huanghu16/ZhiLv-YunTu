@@ -21,6 +21,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 # 导入路由
 from app.api.routes import trip
+from app.api.routes import export  # 阶段8新增：文档导出路由
 
 # 导入数据库配置（阶段7会用到，这里先导入确保 Base 被加载）
 from app.config import Base, engine
@@ -34,7 +35,7 @@ def create_app() -> FastAPI:
     app = FastAPI(
         title="智旅云图 API",
         description="基于 RAG + LLM 的 AI 旅行规划系统",
-        version="0.6.0",
+        version="0.7.0",  # 阶段8，修改版本为 0.7.0
     )
 
     # ── CORS 配置 ──────────────────────────────────────
@@ -51,6 +52,9 @@ def create_app() -> FastAPI:
     # ── 注册路由 ──────────────────────────────────────
     # prefix: 所有 /trips 开头的路由都转到 trip.router
     app.include_router(trip.router, prefix="/api/trips", tags=["行程管理"])
+    # 阶段8新增：文档导出路由
+    # 访问路径：/api/export/{trip_id}/markdown 或 /api/export/{trip_id}/pdf
+    app.include_router(export.router, prefix="/api/export", tags=["文档导出"])
 
     # ── 健康检查 ──────────────────────────────────────
     @app.get("/health", tags=["系统"])
