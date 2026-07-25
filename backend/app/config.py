@@ -63,17 +63,17 @@ EMBEDDING_MODEL = os.getenv("EMBEDDING_MODEL", "text-embedding-v4")
 EMBEDDING_BATCH_SIZE = int(os.getenv("EMBEDDING_BATCH_SIZE", "10"))
 RERANK_MODEL = os.getenv("RERANK_MODEL", "qwen3-rerank")
 
-# ─── 5. Redis / 缓存配置 ─────────────────────────────────────
-# Redis 缓存天气、地图、RAG 结果，减少重复外部调用
+# ─── 5. Redis / 缓存配置（阶段9）─────────────────────────
+# Redis 缓存 RAG 结果、天气、地图数据，减少重复外部调用
 # REDIS_ENABLED=false 时自动降级，不缓存也能正常运行
 REDIS_ENABLED = os.getenv("REDIS_ENABLED", "false").lower() == "true"
 REDIS_URL = os.getenv("REDIS_URL", "redis://127.0.0.1:6379/0")
 REDIS_KEY_PREFIX = os.getenv("REDIS_KEY_PREFIX", "trip_planner")
 REDIS_DEFAULT_TTL_SECONDS = int(os.getenv("REDIS_DEFAULT_TTL_SECONDS", "1800"))
-REDIS_WEATHER_TTL_SECONDS = int(os.getenv("REDIS_WEATHER_TTL_SECONDS", "1800"))
-REDIS_MAP_TTL_SECONDS = int(os.getenv("REDIS_MAP_TTL_SECONDS", "86400"))
-REDIS_RAG_TTL_SECONDS = int(os.getenv("REDIS_RAG_TTL_SECONDS", "21600"))
-REDIS_RERANK_TTL_SECONDS = int(os.getenv("REDIS_RERANK_TTL_SECONDS", "21600"))
+REDIS_RAG_TTL_SECONDS = int(os.getenv("REDIS_RAG_TTL_SECONDS", "21600"))       # RAG缓存6小时
+REDIS_RERANK_TTL_SECONDS = int(os.getenv("REDIS_RERANK_TTL_SECONDS", "21600")) # Rerank缓存6小时
+REDIS_WEATHER_TTL_SECONDS = int(os.getenv("REDIS_WEATHER_TTL_SECONDS", "1800")) # 天气缓存30分钟
+REDIS_MAP_TTL_SECONDS = int(os.getenv("REDIS_MAP_TTL_SECONDS", "86400"))       # 地图缓存1天
 
 # ─── 6. 高德地图配置 ─────────────────────────────────────────
 # 高德地图补充景点地址、经纬度、路线、图片

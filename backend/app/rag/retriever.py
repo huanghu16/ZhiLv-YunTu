@@ -7,18 +7,33 @@ retriever.py — RAG 检索器（整合改写 + 检索 + 重排序）
     results = retrieve("不想太赶，想看日落", destination="大理")
 就能拿到重排序后的高质量检索结果。
 
-流程：
+流程（阶段9新增缓存环节）：
     用户输入
+      → 查缓存（命中则直接返回）
       → Query Rewrite（规则改写）
       → 向量检索（ChromaDB Top10）
       → Rerank（规则重排序 Top3）
+      → 写入缓存
       → 返回结果
 """
 from __future__ import annotations
 
+import hashlib
+
+from app.config import REDIS_RAG_TTL_SECONDS
 from app.rag.query_rewriter import rewrite_query
 from app.rag.reranker import rerank
 from app.rag.vector_db import get_vector_db
+from app.services.cache_service import get_cached_json, set_cached_json
+
+def _build_cache_key(destination: str, query: str) -> str:
+    """
+    生成 RAG 缓存 key。
+
+    用 hash 而不是原文：避免特殊字符影响 Redis key，也缩短 key 长度。
+    """
+    query_hash = hashlib.md5(query.encode("utf-8")).hexdigest()[:16]
+    return f"rag:{destination}:{query_hash}"
 
 def retrieve(
     user_input: str,
@@ -43,6 +58,15 @@ def retrieve(
         - rerank_score: 重排序后的分数
         - rewritten_query: 改写后的查询（用于调试）
     """
+    # ── 0. 查缓存（阶段9新增）──────────────────────────
+    # 相同查询第二次直接返回缓存，跳过 Embedding 和向量检索
+    # Redis 不可用时 get_cached_json 返回 None，自动降级为正常检索
+    cache_key = _build_cache_key(destination, user_input)
+    cached = get_cached_json(cache_key)
+    if cached is not None:
+        print(f"[RAG] 缓存命中: {cache_key}")
+        return cached
+
     # ── 1. Query Rewrite ──────────────────────────────
     rewritten = rewrite_query(user_input, destination)
 
@@ -58,6 +82,12 @@ def retrieve(
     # 给每个结果附上改写后的查询（方便调试）
     for r in results:
         r["rewritten_query"] = rewritten
+
+    # ── 4. 写入缓存（阶段9新增）──────────────────────
+    # TTL=6小时，攻略内容不会频繁变化
+    # Redis 不可用时 set_cached_json 直接跳过，不影响返回结果
+    set_cached_json(cache_key, results, expire_seconds=REDIS_RAG_TTL_SECONDS)
+    print(f"[RAG] 缓存已写入: {cache_key} (TTL={REDIS_RAG_TTL_SECONDS}s)")
 
     return results
 
