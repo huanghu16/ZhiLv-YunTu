@@ -83,3 +83,12 @@ AMAP_BASE_URL = os.getenv("AMAP_BASE_URL", "https://restapi.amap.com/v3")
 AMAP_DEFAULT_CITY = os.getenv("AMAP_DEFAULT_CITY", "")
 AMAP_TIMEOUT_SECONDS = int(os.getenv("AMAP_TIMEOUT_SECONDS", "20"))
 ENABLE_AMAP_ENRICHMENT = os.getenv("ENABLE_AMAP_ENRICHMENT", "false").lower() == "true"
+
+# ─── 7. RAG 模型级优化配置（阶段10新增）──────────────────────
+# LLM 查询改写：用通义千问理解用户意图，生成更精准的检索关键词
+# 关闭时使用规则版改写（停用词+关键词映射）
+USE_LLM_REWRITE = os.getenv("USE_LLM_REWRITE", "false").lower() == "true"
+
+# LLM 重排序：用 DashScope rerank 模型对候选结果精排
+# 关闭时使用规则版重排序（关键词命中打分）
+USE_LLM_RERANK = os.getenv("USE_LLM_RERANK", "false").lower() == "true"

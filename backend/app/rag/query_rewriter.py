@@ -1,22 +1,21 @@
 """
-query_rewriter.py — 查询改写（规则版）
+query_rewriter.py — 查询改写（阶段10：LLM + 规则降级）
 
 职责：把用户的口语化输入，改写成向量检索友好的关键词组合。
 
-为什么需要改写？
-→ 用户说"不想太赶，想看日落"，直接拿这句话去检索，语义太分散。
-  改写成"日落 景点 推荐"后，检索更精准。
+阶段10更新：
+    新增 LLM 改写——用通义千问理解用户意图，生成更精准的检索词。
+    LLM 调用失败时自动降级到规则版（停用词+关键词映射）。
 
-本阶段用规则实现（不调用 LLM），阶段10会换成 LLM 改写。
-规则思路：
-1. 去停用词（的、了、想、不想、太、去...）
-2. 提取目的地关键词
-3. 提取意图关键词（日落、日出、美食、住宿...）
-4. 组合成检索查询
+    为什么 LLM 比规则好？
+    → 规则版只能做"关键词替换"，理解不了"带爸妈出去玩"这种复杂意图。
+      LLM 能理解"带爸妈"→ 需要亲子/家庭/适老化的景点和住宿。
 """
 from __future__ import annotations
 
 import re
+
+from app.config import USE_LLM_REWRITE
 
 # ─── 停用词表 ──────────────────────────────────────────────
 # 这些词出现频率高但不携带检索语义，需要去掉
@@ -68,16 +67,15 @@ CITY_ALIASES = {
     "厦门": "xiamen",
 }
 
-def rewrite_query(user_input: str, destination: str = "") -> str:
+# ═══════════════════════════════════════════════════════════
+# 规则版改写（原有代码，作为降级方案）
+# ═══════════════════════════════════════════════════════════
+
+def _rewrite_by_rules(user_input: str, destination: str = "") -> str:
     """
-    规则级查询改写。
+    规则级查询改写（降级方案）。
 
-    参数：
-        user_input: 用户的原始输入，如 "不想太赶，想看日落"
-        destination: 目的地（中文），如 "大理"
-
-    返回：
-        改写后的检索查询，如 "大理 日落 景点 推荐"
+    原来的 rewrite_query 逻辑，函数名加下划线表示内部使用。
     """
     # 1. 去除标点符号，统一用空格分词
     cleaned = re.sub(r"[，。！？、；：""''（）()\[\]{}]", " ", user_input)
@@ -110,6 +108,89 @@ def rewrite_query(user_input: str, destination: str = "") -> str:
             result.append(word)
 
     return " ".join(result) if result else user_input
+
+# ═══════════════════════════════════════════════════════════
+# LLM 版改写（阶段10新增）
+# ═══════════════════════════════════════════════════════════
+
+def _rewrite_by_llm(user_input: str, destination: str = "") -> str:
+    """
+    LLM 查询改写。
+
+    用通义千问理解用户意图，生成更适合向量检索的关键词组合。
+
+    为什么 LLM 比规则好？
+    → "带爸妈去大理，不想太累" ——规则版只会去掉"不想、太"，
+      保留"带、爸妈、大理、累"。LLM 能理解这是"亲子/家庭/轻松/休闲"需求。
+    """
+    from langchain_core.messages import HumanMessage, SystemMessage
+
+    from app.agents.llm_client import get_llm_client
+
+    system_prompt = """你是一个旅行攻略检索的查询改写助手。
+用户会给你一段旅行需求描述，你需要：
+1. 理解用户的真实意图（亲子？蜜月？摄影？美食？休闲？）
+2. 提取目的地
+3. 生成 5-8 个适合向量检索的关键词，用空格分隔
+
+要求：
+- 只输出关键词，不要输出其他内容
+- 关键词要覆盖用户意图的同义词（如"日落"要加"夕阳、黄昏"）
+- 不要输出标点符号
+
+示例：
+输入：不想太赶，想看日落
+输出：大理 日落 夕阳 黄昏 傍晚 景点 推荐 轻松
+
+输入：带爸妈去，不要太累
+输出：大理 亲子 家庭 老人 轻松 休闲 适老 景点"""
+
+    human_prompt = f"目的地：{destination}\n用户需求：{user_input}"
+
+    client = get_llm_client()
+    content, _ = client.invoke([
+        SystemMessage(content=system_prompt),
+        HumanMessage(content=human_prompt),
+    ])
+
+    # 清理 LLM 输出：去掉可能的换行和多余空格
+    rewritten = content.strip().replace("\n", " ")
+    rewritten = re.sub(r"\s+", " ", rewritten)
+
+    if not rewritten:
+        # LLM 返回空，降级到规则版
+        raise ValueError("LLM 返回空结果")
+
+    print(f"[QueryRewrite] LLM 改写: '{user_input}' → '{rewritten}'")
+    return rewritten
+
+# ═══════════════════════════════════════════════════════════
+# 统一入口
+# ═══════════════════════════════════════════════════════════
+
+def rewrite_query(user_input: str, destination: str = "") -> str:
+    """
+    查询改写统一入口。
+
+    优先使用 LLM 改写，失败时降级到规则版。
+
+    参数：
+        user_input: 用户的原始输入，如 "不想太赶，想看日落"
+        destination: 目的地（中文），如 "大理"
+
+    返回：
+        改写后的检索查询，如 "大理 日落 夕阳 黄昏 景点 推荐 轻松"
+    """
+    # 开关关闭 → 直接用规则版
+    if not USE_LLM_REWRITE:
+        return _rewrite_by_rules(user_input, destination)
+
+    # 开关开启 → 尝试 LLM，失败降级
+    try:
+        return _rewrite_by_llm(user_input, destination)
+    except Exception as e:
+        print(f"[QueryRewrite] LLM 改写失败，降级到规则版: {e}")
+        return _rewrite_by_rules(user_input, destination)
 
 def extract_destination(text: str) -> str | None:
     """
