@@ -21,6 +21,7 @@ from app.agents.trip_planner_agent import generate_itinerary
 from app.config import ENABLE_AMAP_ENRICHMENT
 from app.models.schemas import Itinerary, TripRequest, TokenUsage
 from app.rag.retriever import retrieve_for_planning
+from app.services.map_service import enrich_itinerary_with_map_data
 
 def _format_rag_context(results: list[dict]) -> str:
     """
@@ -108,16 +109,18 @@ def plan_trip(request: TripRequest) -> Itinerary:
     # ── 步骤 3: 地图补全（当前跳过）──────────────────
     print("[Service] 步骤3/5: 地图补全...")
     if ENABLE_AMAP_ENRICHMENT:
-        # 阶段9接入高德地图 API，补充景点经纬度/地址/图片
-        # itinerary = enrich_with_map_data(itinerary)
-        print("  地图补全已启用（待阶段9实现）")
+        try:
+            enrich_itinerary_with_map_data(itinerary, city=request.destination)
+        except Exception as e:
+            print(f"  地图补全出错（不影响主流程）: {e}")
     else:
         print("  地图补全已关闭（ENABLE_AMAP_ENRICHMENT=false）")
 
     # ── 步骤 4: 天气补充（当前跳过）──────────────────
     print("[Service] 步骤4/5: 天气补充...")
-    # 阶段9接入天气 API
-    print("  天气补充待阶段9实现，跳过")
+    # 天气数据由前端单独调 /api/weather/forecast 接口获取
+    # 这里不做处理，避免行程生成因天气 API 失败而整体失败
+    print("  天气由前端单独调用 /api/weather/forecast 获取")
 
     # ── 步骤 5: 附加来源说明 + 汇总 token ─────────────
     print("[Service] 步骤5/5: 附加来源说明 + 汇总 token...")

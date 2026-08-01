@@ -22,6 +22,7 @@ from fastapi.middleware.cors import CORSMiddleware
 # 导入路由
 from app.api.routes import trip
 from app.api.routes import export  # 阶段8新增：文档导出路由
+from app.api.routes import weather  # 阶段12新增：天气查询路由
 
 # 导入数据库配置（阶段7会用到，这里先导入确保 Base 被加载）
 from app.config import Base, engine
@@ -55,6 +56,8 @@ def create_app() -> FastAPI:
     # 阶段8新增：文档导出路由
     # 访问路径：/api/export/{trip_id}/markdown 或 /api/export/{trip_id}/pdf
     app.include_router(export.router, prefix="/api/export", tags=["文档导出"])
+    # 阶段12新增：天气查询路由
+    app.include_router(weather.router, prefix="/api/weather", tags=["天气查询"])
 
     # ── 健康检查 ──────────────────────────────────────
     @app.get("/health", tags=["系统"])
