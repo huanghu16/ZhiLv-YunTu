@@ -40,63 +40,58 @@ def retrieve(
     destination: str = "",
     top_k: int = 3,
     recall_n: int = 10,
-) -> list[dict]:
+) -> tuple[list[dict], dict]:
     """
     完整的 RAG 在线检索流程。
 
-    参数：
-        user_input: 用户的原始输入，如 "不想太赶，想看日落"
-        destination: 目的地（中文），如 "大理"
-        top_k: 最终返回几个结果
-        recall_n: 向量检索阶段召回几个候选（要多召回，再由 rerank 筛选）
-
     返回：
-        重排序后的检索结果列表，每个元素含：
-        - content: 攻略正文
-        - metadata: 元数据（city/heading/section）
-        - score: 原始向量相似度
-        - rerank_score: 重排序后的分数
-        - rewritten_query: 改写后的查询（用于调试）
+        (results, token_info)
+        - results: 重排序后的检索结果列表
+        - token_info: 包含 rewrite/embedding/rerank 三段 token 的字典
     """
-    # ── 0. 查缓存（阶段9新增）──────────────────────────
-    # 相同查询第二次直接返回缓存，跳过 Embedding 和向量检索
-    # Redis 不可用时 get_cached_json 返回 None，自动降级为正常检索
+    # token 信息初始化（缓存命中时返回全 0）
+    token_info = {
+        "rewrite": {"prompt_tokens": 0, "completion_tokens": 0},
+        "embedding": {"prompt_tokens": 0, "completion_tokens": 0},
+        "rerank": {"prompt_tokens": 0, "completion_tokens": 0},
+    }
+
+    # ── 0. 查缓存 ──────────────────────────────────────
     cache_key = _build_cache_key(destination, user_input)
     cached = get_cached_json(cache_key)
     if cached is not None:
         print(f"[RAG] 缓存命中: {cache_key}")
-        return cached
+        return cached, token_info  # 缓存命中，token 全 0
 
     # ── 1. Query Rewrite ──────────────────────────────
-    rewritten = rewrite_query(user_input, destination)
+    rewritten, rewrite_tokens = rewrite_query(user_input, destination)
+    token_info["rewrite"] = rewrite_tokens
 
     # ── 2. 向量检索（多召回）──────────────────────────
-    # recall_n 设为 10：先粗筛 10 个候选，再精排 top_k 个
-    # 这就是"召回"和"排序"分离的经典设计
     db = get_vector_db()
-    candidates = db.query_by_text(rewritten, n_results=recall_n)
+    candidates, embedding_tokens = db.query_by_text(rewritten, n_results=recall_n)
+    token_info["embedding"] = embedding_tokens
 
     # ── 3. Rerank（精排）──────────────────────────────
-    results = rerank(candidates, rewritten, destination, top_k=top_k)
+    results, rerank_tokens = rerank(candidates, rewritten, destination, top_k=top_k)
+    token_info["rerank"] = rerank_tokens
 
     # 给每个结果附上改写后的查询（方便调试）
     for r in results:
         r["rewritten_query"] = rewritten
 
-    # ── 4. 写入缓存（阶段9新增）──────────────────────
-    # TTL=6小时，攻略内容不会频繁变化
-    # Redis 不可用时 set_cached_json 直接跳过，不影响返回结果
+    # ── 4. 写入缓存 ──────────────────────────────────
     set_cached_json(cache_key, results, expire_seconds=REDIS_RAG_TTL_SECONDS)
     print(f"[RAG] 缓存已写入: {cache_key} (TTL={REDIS_RAG_TTL_SECONDS}s)")
 
-    return results
+    return results, token_info
 
 def retrieve_for_planning(
     destination: str,
     preferences: list[str] | None = None,
     special_notes: str | None = None,
     top_k: int = 3,
-) -> list[dict]:
+) -> tuple[list[dict], dict]:
     """
     专为行程规划设计的检索入口。
 

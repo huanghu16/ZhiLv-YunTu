@@ -101,26 +101,19 @@ def _rerank_by_llm(
     query: str,
     destination: str = "",
     top_k: int = 3,
-) -> list[dict]:
+) -> tuple[list[dict], dict]:
     """
-    用 DashScope rerank 模型重排序（Cross-encoder）。
+    用 DashScope rerank 模型重排序。
 
-    调用 DashScope 的 text-rerank 接口，让模型给每个候选打相关性分。
-
-    为什么用 httpx 直接调？
-    → DashScope 的 rerank 接口不是 OpenAI 兼容格式，
-      LangChain 没有封装，所以用 httpx 直接发 HTTP 请求。
+    返回：(排序结果, token信息)
     """
     import httpx
 
     if not candidates:
-        return []
+        return [], {"prompt_tokens": 0, "completion_tokens": 0}
 
-    # 准备请求参数
-    # 把每个候选的 content 提取出来作为 documents
     documents = [c.get("content", "") for c in candidates]
 
-    # DashScope rerank API 地址
     url = "https://dashscope.aliyuncs.com/api/v1/services/rerank/text-rerank/text-rerank"
 
     headers = {
@@ -133,17 +126,15 @@ def _rerank_by_llm(
         "query": query,
         "documents": documents,
         "top_n": top_k,
-        "return_documents": False,  # 只要分数和索引，不要返回原文
+        "return_documents": False,
     }
 
-    # 调用 API（超时 10 秒）
     with httpx.Client(timeout=10.0) as client:
         response = client.post(url, json=payload, headers=headers)
         response.raise_for_status()
         data = response.json()
 
     # 解析返回结果
-    # 返回格式：{"output": {"results": [{"index": 0, "relevance_score": 0.95}, ...]}}
     results = data.get("output", {}).get("results", [])
 
     if not results:
@@ -163,42 +154,46 @@ def _rerank_by_llm(
         }
         reranked.append(candidate)
 
+    # 提取 token 使用量
+    # DashScope rerank 返回格式：{"usage": {"input_tokens": 1703, "output_tokens": 0}}
+    # 注意：rerank 用 input_tokens/output_tokens，不是 prompt_tokens/completion_tokens
+    usage = data.get("usage", {})
+    token_info = {
+        "prompt_tokens": usage.get("input_tokens", 0),
+        "completion_tokens": usage.get("output_tokens", 0),
+    }
+
     print(f"[Rerank] LLM 重排序完成，{len(reranked)} 个结果，"
           f"最高分: {reranked[0]['rerank_score'] if reranked else 'N/A'}")
+    print(f"[rerank] qwen3-rerank token: "
+          f"prompt={token_info['prompt_tokens']}, "
+          f"completion={token_info['completion_tokens']}, source=api")
 
-    return reranked[:top_k]
+    return reranked[:top_k], token_info
 
 # ═══════════════════════════════════════════════════════════
 # 统一入口
 # ═══════════════════════════════════════════════════════════
-
 def rerank(
     candidates: list[dict],
     query: str,
     destination: str = "",
     top_k: int = 3,
-) -> list[dict]:
+) -> tuple[list[dict], dict]:
     """
     对检索候选结果进行重排序。
 
-    优先使用 LLM rerank 模型，失败时降级到规则版。
-
-    参数：
-        candidates: 向量检索返回的候选列表，每个元素含 content/metadata/score
-        query: 改写后的查询字符串，如 "大理 日落 景点"
-        destination: 目的地（中文），如 "大理"
-        top_k: 返回前几个结果
-
-    返回：
-        重排序后的 top_k 个结果，每个增加 rerank_score 字段
+    返回：(排序结果, token信息)
     """
+    zero_tokens = {"prompt_tokens": 0, "completion_tokens": 0}
+
     # 开关关闭 → 直接用规则版
     if not USE_LLM_RERANK:
-        return _rerank_by_rules(candidates, query, destination, top_k)
+        return _rerank_by_rules(candidates, query, destination, top_k), zero_tokens
 
     # 开关开启 → 尝试 LLM，失败降级
     try:
         return _rerank_by_llm(candidates, query, destination, top_k)
     except Exception as e:
         print(f"[Rerank] LLM 重排序失败，降级到规则版: {e}")
-        return _rerank_by_rules(candidates, query, destination, top_k)
+        return _rerank_by_rules(candidates, query, destination, top_k), zero_tokens

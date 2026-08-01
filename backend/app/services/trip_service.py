@@ -79,7 +79,7 @@ def plan_trip(request: TripRequest) -> Itinerary:
     # ── 步骤 1: RAG 检索攻略 ──────────────────────────
     print("[Service] 步骤1/5: RAG 检索攻略...")
     # 把偏好和特殊要求组合成检索查询
-    rag_results = retrieve_for_planning(
+    rag_results, rag_tokens = retrieve_for_planning(
         destination=request.destination,
         preferences=request.preferences,
         special_notes=request.special_notes,
@@ -119,12 +119,37 @@ def plan_trip(request: TripRequest) -> Itinerary:
     # 阶段9接入天气 API
     print("  天气补充待阶段9实现，跳过")
 
-    # ── 步骤 5: 附加来源说明 + token 统计 ────────────
-    print("[Service] 步骤5/5: 附加来源说明...")
+    # ── 步骤 5: 附加来源说明 + 汇总 token ─────────────
+    print("[Service] 步骤5/5: 附加来源说明 + 汇总 token...")
     itinerary.source_notes = source_notes
-    # token_usage 已经在 generate_itinerary 里设好了，这里确认一下
+
+    # 汇总 4 段 token：Query Rewrite / Embedding / Rerank / Planner
     if itinerary.token_usage is None:
         itinerary.token_usage = token_usage
+
+    # 补上 RAG 三段 token（planner 段已在 generate_itinerary 里设好）
+    itinerary.token_usage.rewrite_prompt_tokens = rag_tokens["rewrite"]["prompt_tokens"]
+    itinerary.token_usage.rewrite_completion_tokens = rag_tokens["rewrite"]["completion_tokens"]
+    itinerary.token_usage.embedding_prompt_tokens = rag_tokens["embedding"]["prompt_tokens"]
+    itinerary.token_usage.embedding_completion_tokens = rag_tokens["embedding"]["completion_tokens"]
+    itinerary.token_usage.rerank_prompt_tokens = rag_tokens["rerank"]["prompt_tokens"]
+    itinerary.token_usage.rerank_completion_tokens = rag_tokens["rerank"]["completion_tokens"]
+
+    # 打印 token 分项与总量
+    tu = itinerary.token_usage
+    print(f"\n{'='*50}")
+    print(f"[token_usage] Query Rewrite: prompt={tu.rewrite_prompt_tokens}, "
+          f"completion={tu.rewrite_completion_tokens}")
+    print(f"[token_usage] Query Embedding: prompt={tu.embedding_prompt_tokens}, "
+          f"completion={tu.embedding_completion_tokens}")
+    print(f"[token_usage] Rerank: prompt={tu.rerank_prompt_tokens}, "
+          f"completion={tu.rerank_completion_tokens}")
+    print(f"[token_usage] Planner: prompt={tu.planner_prompt_tokens}, "
+          f"completion={tu.planner_completion_tokens}")
+    print(f"[token_usage] Total: prompt={tu.total_prompt_tokens}, "
+          f"completion={tu.total_completion_tokens}, "
+          f"all={tu.total_tokens}")
+    print(f"{'='*50}\n")
 
     print(f"[Service] 行程规划完成!")
     print(f"  行程ID: {itinerary.trip_id}")

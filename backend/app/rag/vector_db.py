@@ -68,18 +68,17 @@ class VectorDB:
         )
         return len(chunks)
 
-    def query_by_text(self, query_text: str, n_results: int = 5) -> list[dict]:
+    def query_by_text(self, query_text: str, n_results: int = 5) -> tuple[list[dict], dict]:
         """
         用文本查询：先把查询文本向量化，再检索。
 
-        返回结构：
-        [{"id": "dali_景点推荐_0",
-          "content": "洱海是大理的灵魂...",
-          "metadata": {"city": "dali", "source": "dali_guide.md", ...},
-          "score": 0.85}, ...]
+        返回：
+            (results, embedding_token_info)
+            - results: 检索结果列表
+            - embedding_token_info: 本次查询 embedding 的 token 消耗
         """
-        # 1. 查询文本向量化
-        query_embedding = get_embedding_client().embed(query_text)
+        # 1. 查询文本向量化（用 embed_query 拿到 token 信息）
+        query_embedding, embedding_tokens = get_embedding_client().embed_query(query_text)
 
         # 2. 调用 ChromaDB 检索
         results = self.collection.query(
@@ -89,12 +88,10 @@ class VectorDB:
         )
 
         # 3. 整理成易用的列表格式
-        # ChromaDB 返回嵌套列表（因为支持多查询），这里只取第一个查询的结果
         retrieved = []
         if results["ids"] and results["ids"][0]:
             for i in range(len(results["ids"][0])):
                 distance = results["distances"][0][i]
-                # distance 越小越相似，转成 score：1 - distance（0-1，越大越好）
                 score = 1.0 - distance
                 retrieved.append(
                     {
@@ -104,7 +101,7 @@ class VectorDB:
                         "score": round(score, 4),
                     }
                 )
-        return retrieved
+        return retrieved, embedding_tokens
 
     def count(self) -> int:
         """返回向量库中当前文档数量。"""

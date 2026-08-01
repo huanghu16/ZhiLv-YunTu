@@ -51,6 +51,53 @@ class EmbeddingClient:
         vectors = self.embed_batch([text])
         return vectors[0]
 
+    def embed_query(self, text: str) -> tuple[list[float], dict]:
+        """
+        单条文本向量化（在线检索专用），同时返回 token 使用量。
+
+        和 embed() 的区别：
+        - embed() 只返回向量，给离线入库用
+        - embed_query() 返回 (向量, token信息)，给在线检索用
+
+        为什么分开？
+        → 离线入库不需要统计 token，在线检索需要。
+        """
+        url = f"{self.base_url}/embeddings"
+        headers = {
+            "Authorization": f"Bearer {self.api_key}",
+            "Content-Type": "application/json",
+        }
+        payload = {
+            "model": self.model,
+            "input": [text],
+            "dimensions": 1024,
+        }
+
+        with httpx.Client(timeout=60.0) as client:
+            response = client.post(url, headers=headers, json=payload)
+            response.raise_for_status()
+
+        result = response.json()
+
+        # 提取向量
+        embeddings_data = sorted(result["data"], key=lambda x: x["index"])
+        vector = embeddings_data[0]["embedding"]
+
+        # 提取 token 使用量
+        # DashScope embedding 返回格式：{"usage": {"prompt_tokens": 20, "total_tokens": 20}}
+        # embedding 没有 completion_tokens（输出是向量不是文本），所以为 0
+        usage = result.get("usage", {})
+        token_info = {
+            "prompt_tokens": usage.get("prompt_tokens", 0),
+            "completion_tokens": 0,
+        }
+
+        print(f"[embedding] query embedding token: "
+              f"prompt={token_info['prompt_tokens']}, "
+              f"completion=0, source=api")
+
+        return vector, token_info
+
     def embed_batch(self, texts: list[str]) -> list[list[float]]:
         """
         批量向量化，减少 API 调用次数。

@@ -55,7 +55,7 @@ def main():
     print("\n=== 检索测试 ===")
     test_query = "大理哪里看日落最好"
     print(f"查询: {test_query}")
-    results = db.query_by_text(test_query, n_results=3)
+    results, _ = db.query_by_text(test_query, n_results=3)
     for i, r in enumerate(results, 1):
         print(f"  {i}. [score={r['score']}] {r['metadata'].get('heading', '')}")
         print(f"     {r['content'][:80]}...")

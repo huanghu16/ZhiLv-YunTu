@@ -113,18 +113,13 @@ def _rewrite_by_rules(user_input: str, destination: str = "") -> str:
 # LLM 版改写（阶段10新增）
 # ═══════════════════════════════════════════════════════════
 
-def _rewrite_by_llm(user_input: str, destination: str = "") -> str:
+def _rewrite_by_llm(user_input: str, destination: str = "") -> tuple[str, dict]:
     """
     LLM 查询改写。
 
-    用通义千问理解用户意图，生成更适合向量检索的关键词组合。
-
-    为什么 LLM 比规则好？
-    → "带爸妈去大理，不想太累" ——规则版只会去掉"不想、太"，
-      保留"带、爸妈、大理、累"。LLM 能理解这是"亲子/家庭/轻松/休闲"需求。
+    返回：(改写后的查询, token信息)
     """
     from langchain_core.messages import HumanMessage, SystemMessage
-
     from app.agents.llm_client import get_llm_client
 
     system_prompt = """你是一个旅行攻略检索的查询改写助手。
@@ -148,57 +143,46 @@ def _rewrite_by_llm(user_input: str, destination: str = "") -> str:
     human_prompt = f"目的地：{destination}\n用户需求：{user_input}"
 
     client = get_llm_client()
-    content, _ = client.invoke([
+    content, token_info = client.invoke([
         SystemMessage(content=system_prompt),
         HumanMessage(content=human_prompt),
     ])
 
-    # 清理 LLM 输出：去掉可能的换行和多余空格
+    # 清理 LLM 输出
     rewritten = content.strip().replace("\n", " ")
     rewritten = re.sub(r"\s+", " ", rewritten)
 
     if not rewritten:
-        # LLM 返回空，降级到规则版
         raise ValueError("LLM 返回空结果")
 
     print(f"[QueryRewrite] LLM 改写: '{user_input}' → '{rewritten}'")
-    return rewritten
+    print(f"[QueryRewrite] token: prompt={token_info.get('prompt_tokens', 0)}, "
+          f"completion={token_info.get('completion_tokens', 0)}")
+
+    return rewritten, token_info
 
 # ═══════════════════════════════════════════════════════════
 # 统一入口
 # ═══════════════════════════════════════════════════════════
 
-def rewrite_query(user_input: str, destination: str = "") -> str:
+def rewrite_query(user_input: str, destination: str = "") -> tuple[str, dict]:
     """
     查询改写统一入口。
 
-    优先使用 LLM 改写，失败时降级到规则版。
-
-    参数：
-        user_input: 用户的原始输入，如 "不想太赶，想看日落"
-        destination: 目的地（中文），如 "大理"
-
-    返回：
-        改写后的检索查询，如 "大理 日落 夕阳 黄昏 景点 推荐 轻松"
+    返回：(改写后的查询, token信息)
+    - LLM 模式：返回 LLM 的 token 消耗
+    - 规则模式：返回全 0（规则不消耗 token）
     """
+    # 规则版的 token 信息（全 0，规则不调 API）
+    zero_tokens = {"prompt_tokens": 0, "completion_tokens": 0}
+
     # 开关关闭 → 直接用规则版
     if not USE_LLM_REWRITE:
-        return _rewrite_by_rules(user_input, destination)
+        return _rewrite_by_rules(user_input, destination), zero_tokens
 
     # 开关开启 → 尝试 LLM，失败降级
     try:
         return _rewrite_by_llm(user_input, destination)
     except Exception as e:
         print(f"[QueryRewrite] LLM 改写失败，降级到规则版: {e}")
-        return _rewrite_by_rules(user_input, destination)
-
-def extract_destination(text: str) -> str | None:
-    """
-    从用户输入中尝试识别目的地城市。
-
-    返回中文城市名（如"大理"），识别不到返回 None。
-    """
-    for city_name in CITY_ALIASES:
-        if city_name in text:
-            return city_name
-    return None
+        return _rewrite_by_rules(user_input, destination), zero_tokens
