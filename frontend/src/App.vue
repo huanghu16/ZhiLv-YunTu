@@ -6,14 +6,15 @@ import Result from "./views/Result.vue";
 import History from "./views/History.vue";
 import type { Itinerary } from "./types";
 
-type Page = "home" | "result" | "history";
+type Page = "home" | "plan" | "history";
 
 const currentPage = ref<Page>("home");
 const currentItinerary = ref<Itinerary | null>(null);
 
 function handleGenerated(itinerary: Itinerary) {
+  // 新生成的行程直接替换原有行程，跳转到行程计划页
   currentItinerary.value = itinerary;
-  currentPage.value = "result";
+  currentPage.value = "plan";
 }
 
 function handleUpdated(itinerary: Itinerary) {
@@ -24,13 +25,20 @@ function goHome() {
   currentPage.value = "home";
 }
 
+function goPlan() {
+  // 只要有行程就切换到行程计划页
+  if (currentItinerary.value) {
+    currentPage.value = "plan";
+  }
+}
+
 function goHistory() {
   currentPage.value = "history";
 }
 
 function openHistoryItem(itinerary: Itinerary) {
   currentItinerary.value = itinerary;
-  currentPage.value = "result";
+  currentPage.value = "plan";
 }
 </script>
 
@@ -49,6 +57,13 @@ function openHistoryItem(itinerary: Itinerary) {
           规划
         </button>
         <button
+          :class="['nav-btn', { 'nav-btn--active': currentPage === 'plan', 'nav-btn--disabled': !currentItinerary }]"
+          :disabled="!currentItinerary"
+          @click="goPlan"
+        >
+          行程计划
+        </button>
+        <button
           :class="['nav-btn', { 'nav-btn--active': currentPage === 'history' }]"
           @click="goHistory"
         >
@@ -63,7 +78,7 @@ function openHistoryItem(itinerary: Itinerary) {
         @generated="handleGenerated"
       />
       <Result
-        v-else-if="currentPage === 'result'"
+        v-else-if="currentPage === 'plan'"
         :itinerary="currentItinerary"
         @back-home="goHome"
         @view-history="goHistory"
@@ -150,6 +165,15 @@ body {
 .nav-btn--active {
   background: linear-gradient(135deg, #6d82de 0%, #8a67cf 100%);
   color: #ffffff;
+}
+
+.nav-btn--disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.nav-btn--disabled:hover {
+  background: transparent;
 }
 
 .app-body {
