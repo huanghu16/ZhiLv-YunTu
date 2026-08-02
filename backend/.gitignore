@@ -24,13 +24,13 @@ build/
 
 # ===== 数据库与向量库 =====
 # SQLite 数据库（可重新生成）
-backend/db/
+db/
 *.db
 *.sqlite
 *.sqlite3
 
 # ChromaDB 向量库（可重新生成）
-backend/db/chroma_db/
+db/chroma_db/
 
 # ===== 前端 =====
 node_modules/
