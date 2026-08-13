@@ -3,12 +3,11 @@ import axios from "axios";
 import { computed, reactive, ref } from "vue";
 import { message } from "ant-design-vue";
 
+import { useTripStore } from "../stores/trip";
 import { generateTrip } from "../services/api";
-import type { Itinerary, TripRequestPayload } from "../types";
+import type { TripRequestPayload } from "../types";
 
-const emit = defineEmits<{
-  generated: [itinerary: Itinerary];
-}>();
+const store = useTripStore();
 
 const preferenceOptions = [
   "自然风景",
@@ -74,8 +73,9 @@ async function handleSubmit() {
   isSubmitting.value = true;
   try {
     const itinerary = await generateTrip(payload);
+    store.setItinerary(itinerary);
+    store.setPage("plan");
     message.success("行程生成成功，已切换到结果页。");
-    emit("generated", itinerary);
   } catch (error) {
     console.error(error);
     if (axios.isAxiosError(error)) {

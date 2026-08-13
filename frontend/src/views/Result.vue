@@ -2,6 +2,7 @@
 import { computed, ref, watch } from "vue";
 import { message } from "ant-design-vue";
 
+import { useTripStore } from "../stores/trip";
 import AmapTripMap from "../components/AmapTripMap.vue";
 import {
   editTrip,
@@ -12,15 +13,7 @@ import {
 } from "../services/api";
 import type { Itinerary, WeatherForecastResponse } from "../types";
 
-const props = defineProps<{
-  itinerary: Itinerary | null;
-}>();
-
-const emit = defineEmits<{
-  backHome: [];
-  viewHistory: [];
-  updated: [itinerary: Itinerary];
-}>();
+const store = useTripStore();
 
 const saving = ref(false);
 const exportingPdf = ref(false);
@@ -31,6 +24,11 @@ const editInstruction = ref("这一天节奏更轻松一点，减少固定安排
 const weatherLoading = ref(false);
 const weatherError = ref("");
 const weather = ref<WeatherForecastResponse | null>(null);
+
+// 从 store 读取当前行程（响应式）
+const itinerary = computed<Itinerary | null>(
+  () => store.currentItinerary as Itinerary | null
+);
 
 function formatShortDate(dateText?: string | null): string {
   if (!dateText) {
@@ -60,11 +58,11 @@ function formatWeatherDate(dateText?: string | null, week?: string | null): stri
 }
 
 const budgetItems = computed(() => {
-  if (!props.itinerary) {
+  if (!itinerary.value) {
     return [];
   }
 
-  const budget = props.itinerary.budget_breakdown;
+  const budget = itinerary.value.budget_breakdown;
   return [
     { label: "景点门票", value: `¥${budget.tickets.toFixed(0)}` },
     { label: "酒店住宿", value: `¥${budget.hotel.toFixed(0)}` },
@@ -74,11 +72,11 @@ const budgetItems = computed(() => {
 });
 
 const dayBudgetItems = computed(() => {
-  if (!props.itinerary) {
+  if (!itinerary.value) {
     return [];
   }
 
-  return props.itinerary.days.map((day) => {
+  return itinerary.value.days.map((day) => {
     const tickets = day.spots.reduce((sum, spot) => sum + (spot.estimated_cost ?? 0), 0);
     const meals = day.meals.reduce((sum, meal) => sum + (meal.estimated_cost ?? 0), 0);
     const transport = day.transport.reduce((sum, item) => sum + (item.estimated_cost ?? 0), 0);
@@ -99,11 +97,11 @@ const dayBudgetItems = computed(() => {
 });
 
 const mapPoints = computed(() => {
-  if (!props.itinerary) {
+  if (!itinerary.value) {
     return [];
   }
 
-  return props.itinerary.days.flatMap((day) =>
+  return itinerary.value.days.flatMap((day) =>
     day.spots.map((spot) => ({
       key: `${day.day_index}-${spot.name}`,
       dayIndex: day.day_index,
@@ -150,11 +148,11 @@ const hasRainyWeather = computed(() => {
 });
 
 const displayTips = computed(() => {
-  if (!props.itinerary) {
+  if (!itinerary.value) {
     return [];
   }
 
-  const tips = props.itinerary.tips
+  const tips = itinerary.value.tips
     .map((tip) => tip.trim())
     .filter(Boolean)
     .filter((tip) => !technicalTipKeywords.some((keyword) => tip.includes(keyword)));
@@ -174,24 +172,24 @@ const displayTips = computed(() => {
   }
 
   return [
-    `建议根据${props.itinerary.destination}当天实时天气准备雨具或薄外套。`,
+    `建议根据${itinerary.value.destination}当天实时天气准备雨具或薄外套。`,
     "古镇、生态廊道和石板路更适合慢慢走，鞋子尽量选择舒适防滑的款式。",
   ];
 });
 
 function buildVisibleItinerary(): Itinerary | null {
-  if (!props.itinerary) {
+  if (!itinerary.value) {
     return null;
   }
 
   return {
-    ...props.itinerary,
+    ...itinerary.value,
     tips: displayTips.value,
   };
 }
 
 async function loadWeather() {
-  if (!props.itinerary?.destination) {
+  if (!itinerary.value?.destination) {
     weather.value = null;
     return;
   }
@@ -199,7 +197,7 @@ async function loadWeather() {
   weatherLoading.value = true;
   weatherError.value = "";
   try {
-    weather.value = await fetchWeatherForecast(props.itinerary.destination);
+    weather.value = await fetchWeatherForecast(itinerary.value.destination);
   } catch (error) {
     console.error(error);
     weather.value = null;
@@ -210,7 +208,7 @@ async function loadWeather() {
 }
 
 watch(
-  () => props.itinerary?.destination,
+  () => itinerary.value?.destination,
   () => {
     void loadWeather();
   },
@@ -218,9 +216,9 @@ watch(
 );
 
 watch(
-  () => props.itinerary?.trip_id,
+  () => itinerary.value?.trip_id,
   () => {
-    const firstDay = props.itinerary?.days[0];
+    const firstDay = itinerary.value?.days[0];
     editScope.value = firstDay ? `day_${firstDay.day_index}` : "day_1";
   },
   { immediate: true }
@@ -295,7 +293,7 @@ async function handleSave() {
 }
 
 async function handleEdit() {
-  if (!props.itinerary) {
+  if (!itinerary.value) {
     return;
   }
 
@@ -308,13 +306,13 @@ async function handleEdit() {
   editing.value = true;
   try {
     const updatedItinerary = await editTrip({
-      trip_id: props.itinerary.trip_id,
-      current_itinerary: props.itinerary,
+      trip_id: itinerary.value.trip_id,
+      current_itinerary: itinerary.value,
       user_instruction: instruction,
       edit_scope: editScope.value,
       preserve_constraints: ["保留预算结构", "保留目的地和旅行日期"],
     });
-    emit("updated", updatedItinerary);
+    store.updateItinerary(updatedItinerary);
     message.success("行程已智能调整。");
   } catch (error) {
     console.error(error);
@@ -341,11 +339,11 @@ async function handleEdit() {
       </ul>
 
       <div class="sidebar-actions">
-        <button class="back-button" @click="$emit('backHome')">返回规划页</button>
+        <button class="back-button" @click="store.goHome">返回规划页</button>
         <button class="save-button" :disabled="saving" @click="handleSave">
           {{ saving ? "保存中..." : "保存行程" }}
         </button>
-        <button class="history-button" @click="$emit('viewHistory')">历史列表</button>
+        <button class="history-button" @click="store.goHistory">历史列表</button>
         <button class="export-button" :disabled="exportingPdf" @click="openPdfExport">
           {{ exportingPdf ? "准备 PDF..." : "导出 PDF" }}
         </button>
@@ -580,7 +578,7 @@ async function handleEdit() {
     <div class="empty-state__card">
       <h2>还没有生成结果</h2>
       <p>先回到规划页生成一条 itinerary，结果页就会开始展示真实数据。</p>
-      <button class="back-button" @click="$emit('backHome')">返回规划页</button>
+      <button class="back-button" @click="store.goHome">返回规划页</button>
     </div>
   </section>
 </template>

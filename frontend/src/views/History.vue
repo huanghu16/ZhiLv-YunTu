@@ -2,12 +2,11 @@
 import { message } from "ant-design-vue";
 import { onMounted, ref } from "vue";
 
+import { useTripStore } from "../stores/trip";
 import { deleteTrip, getTripDetail, listTrips } from "../services/api";
 import type { Itinerary, TripSummaryItem } from "../types";
 
-const emit = defineEmits<{
-  openItem: [itinerary: Itinerary];
-}>();
+const store = useTripStore();
 
 const loading = ref(false);
 const items = ref<TripSummaryItem[]>([]);
@@ -30,7 +29,8 @@ async function openTrip(tripId: string) {
   try {
     // 后端 GET /{trip_id} 直接返回 Itinerary
     const itinerary = await getTripDetail(tripId);
-    emit("openItem", itinerary);
+    store.setItinerary(itinerary);
+    store.setPage("plan");
     message.success("已加载已保存行程。");
   } catch (error) {
     console.error(error);

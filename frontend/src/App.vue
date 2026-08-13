@@ -1,71 +1,37 @@
 <script setup lang="ts">
-import { ref } from "vue";
+import { useTripStore } from "./stores/trip";
 
 import Home from "./views/Home.vue";
 import Result from "./views/Result.vue";
 import History from "./views/History.vue";
-import type { Itinerary } from "./types";
 
-type Page = "home" | "plan" | "history";
-
-const currentPage = ref<Page>("home");
-const currentItinerary = ref<Itinerary | null>(null);
-
-function handleGenerated(itinerary: Itinerary) {
-  // 新生成的行程直接替换原有行程，跳转到行程计划页
-  currentItinerary.value = itinerary;
-  currentPage.value = "plan";
-}
-
-function handleUpdated(itinerary: Itinerary) {
-  currentItinerary.value = itinerary;
-}
-
-function goHome() {
-  currentPage.value = "home";
-}
-
-function goPlan() {
-  // 只要有行程就切换到行程计划页
-  if (currentItinerary.value) {
-    currentPage.value = "plan";
-  }
-}
-
-function goHistory() {
-  currentPage.value = "history";
-}
-
-function openHistoryItem(itinerary: Itinerary) {
-  currentItinerary.value = itinerary;
-  currentPage.value = "plan";
-}
+const store = useTripStore();
 </script>
 
 <template>
   <div class="app-shell">
     <header class="app-header">
-      <div class="app-header__title" @click="goHome">
+      <div class="app-header__title" @click="store.goHome">
         <span class="app-header__icon">🗺️</span>
         <span>智旅云图</span>
       </div>
       <nav class="app-header__nav">
         <button
-          :class="['nav-btn', { 'nav-btn--active': currentPage === 'home' }]"
-          @click="goHome"
+          :class="['nav-btn', { 'nav-btn--active': store.currentPage === 'home' }]"
+          @click="store.goHome"
         >
           规划
         </button>
         <button
-          :class="['nav-btn', { 'nav-btn--active': currentPage === 'plan', 'nav-btn--disabled': !currentItinerary }]"
-          :disabled="!currentItinerary"
-          @click="goPlan"
+          :class="['nav-btn', { 'nav-btn--active': store.currentPage === 'plan', 'nav-btn--disabled': !store.hasItinerary }]"
+          :disabled="!store.hasItinerary"
+          @click="store.goPlan"
         >
           行程计划
         </button>
         <button
-          :class="['nav-btn', { 'nav-btn--active': currentPage === 'history' }]"
-          @click="goHistory"
+          :class="['nav-btn', { 'nav-btn--active': store.currentPage === 'history' }]"
+          @click="store.goHistory"
         >
           历史
         </button>
@@ -73,22 +39,9 @@ function openHistoryItem(itinerary: Itinerary) {
     </header>
 
     <main class="app-body">
-      <Home
-        v-if="currentPage === 'home'"
-        @generated="handleGenerated"
-      />
-      <Result
-        v-else-if="currentPage === 'plan'"
-        :itinerary="currentItinerary"
-        @back-home="goHome"
-        @view-history="goHistory"
-        @updated="handleUpdated"
-      />
-      <History
-        v-else-if="currentPage === 'history'"
-        @back-home="goHome"
-        @open-item="openHistoryItem"
-      />
+      <Home v-if="store.currentPage === 'home'" />
+      <Result v-else-if="store.currentPage === 'plan'" />
+      <History v-else-if="store.currentPage === 'history'" />
     </main>
   </div>
 </template>
