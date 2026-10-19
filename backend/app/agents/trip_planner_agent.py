@@ -22,7 +22,7 @@ import re
 import uuid
 from datetime import date as DateType, timedelta
 
-from langchain_core.messages import HumanMessage, SystemMessage
+from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 
 from app.agents.llm_client import get_llm_client
 from app.models.schemas import (
@@ -238,7 +238,25 @@ def generate_itinerary(
 
     # 3. 解析 JSON
     print("[Agent] 正在解析 LLM 输出...")
-    raw_data = _extract_json(content)
+    try:
+        raw_data = _extract_json(content)
+    except ValueError as e:
+        # 模型偶尔会输出不合法的 JSON（少引号/逗号、被截断等）。
+        # 把它的原始输出回喂给它，只要求修复 JSON 语法、不改内容，
+        # 比丢弃整段重来更省 token，成功率也更高。
+        print("[Agent] JSON 解析失败，回喂原始输出请模型修复...")
+        repair_messages = messages + [
+            AIMessage(content=content),
+            HumanMessage(
+                content=(
+                    "你上面的输出不是合法的 JSON，解析时报错了。"
+                    "请只输出修正后的完整 JSON，不要包含任何解释文字、不要用 markdown 代码块，"
+                    "也不要改动任何字段的内容。"
+                )
+            ),
+        ]
+        fixed_content, _ = client.invoke(repair_messages)
+        raw_data = _extract_json(fixed_content)
 
     # 4. 生成 trip_id 并组装 Itinerary
     trip_id = f"trip_{uuid.uuid4().hex[:8]}"

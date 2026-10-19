@@ -10,7 +10,7 @@
  * → Pinia 需要额外安装依赖。这里用 Vue 3 内置的 reactive + computed
  *   即可实现同等效果，代码量极小，且无外部依赖。
  */
-import { computed, reactive, readonly, watch } from "vue";
+import { computed, reactive, watch } from "vue";
 
 import type { Itinerary } from "../types";
 
@@ -100,10 +100,10 @@ export const useTripStore = () => {
     state.currentPage = "history";
   }
 
-  return {
+  return reactive({
     // 状态（只读，防止组件直接修改）
-    currentItinerary: readonly(computed(() => state.currentItinerary)),
-    currentPage: readonly(computed(() => state.currentPage)),
+    currentItinerary: computed(() => state.currentItinerary),
+    currentPage: computed(() => state.currentPage),
     hasItinerary,
 
     // 操作
@@ -114,5 +114,5 @@ export const useTripStore = () => {
     goHome,
     goPlan,
     goHistory,
-  };
+  });
 };

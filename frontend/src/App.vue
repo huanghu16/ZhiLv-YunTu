@@ -13,7 +13,7 @@ const store = useTripStore();
     <header class="app-header">
       <div class="app-header__title" @click="store.goHome">
         <span class="app-header__icon">🗺️</span>
-        <span>智旅云图</span>
+        <span>智旅云途</span>
       </div>
       <nav class="app-header__nav">
         <button
